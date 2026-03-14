@@ -34,8 +34,8 @@
       "position": [540, 300],
       "parameters": {
         "command": "python3",
-        "inputDataType": "stdin",            /* pass previous item JSON via STDIN */
-        "jsonParseOutput": true,             /* parse stdout JSON back into items */
+        "inputDataType": "stdin",           
+        "jsonParseOutput": true,             
         "input": "import sys, json, subprocess, os, time, pandas as pd, requests\n\n# make sure deps are present (quietly)\nsubprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'pandas', 'openpyxl', 'requests'], check=True)\n\ndata = json.loads(sys.stdin.read())  # list with 1 item from Set node\nxlsx_path = data[0].get('excelPath', '/data/university_list.xlsx')\n\nif not os.path.isfile(xlsx_path):\n    raise FileNotFoundError(f'Excel file not found at {xlsx_path}')\n\ndf = pd.read_excel(xlsx_path)\n\ncoords = []\nfor name, state in zip(df['Name of the University'], df['Name of\\nState']):\n    q = f\"{name}, {state}, India\"\n    resp = requests.get('https://nominatim.openstreetmap.org/search', params={'q': q, 'format': 'json', 'limit': 1}, headers={'User-Agent': 'n8n-geocoder'})\n    time.sleep(1)   # Nominatim fair-use: max 1 req/s\n    j = resp.json()\n    lat = float(j[0]['lat']) if j else None\n    lon = float(j[0]['lon']) if j else None\n    coords.append({\n        'University': name,\n        'Latitude': lat,\n        'Longitude': lon\n    })\n\nprint(json.dumps(coords))"
       }
     },
@@ -47,8 +47,8 @@
       "position": [830, 300],
       "parameters": {
         "command": "python3",
-        "inputDataType": "stdin",           /* receives JSON array from previous node */
-        "jsonParseOutput": false,           /* we only need the side-effect (HTML file) */
+        "inputDataType": "stdin",
+        "jsonParseOutput": false,           
         "input": "import sys, json, subprocess, os, folium\n\nsubprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'folium'], check=True)\n\ncoords = json.loads(sys.stdin.read())\ncoords = [c for c in coords if c['Latitude'] and c['Longitude']]\n\nif not coords:\n    raise ValueError('No coordinates received – nothing to map')\n\ncenter_lat = sum(c['Latitude'] for c in coords) / len(coords)\ncenter_lon = sum(c['Longitude'] for c in coords) / len(coords)\n\nm = folium.Map(location=[center_lat, center_lon], zoom_start=5)\nfor c in coords:\n    folium.CircleMarker([\n        c['Latitude'], c['Longitude']],\n        radius=3,\n        tooltip=c['University'],\n        fill=True).add_to(m)\n\nout_path = '/data/universities_map.html'\nm.save(out_path)\nprint(f'✅ Map saved to {out_path}')"
       }
     }
