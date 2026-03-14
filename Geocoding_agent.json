@@ -1,0 +1,161 @@
+{
+  "name": "Geocode & Map NSS Universities (Cloud)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "fileSelector": "university_list.xlsx"
+      },
+      "id": "2",
+      "name": "Read Excel",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read"
+      },
+      "id": "3",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "4",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "url": "[https://nominatim.openstreetmap.org/search](https://nominatim.openstreetmap.org/search)",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json['Name of the University'] }}, {{ $json['Name of\\nState'] }}, India"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5",
+      "name": "Nominatim API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 100]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "University",
+              "value": "={{ $('Loop').item.json['Name of the University'] }}"
+            },
+            {
+              "name": "Latitude",
+              "value": "={{ $json[0] ? $json[0].lat : '' }}"
+            },
+            {
+              "name": "Longitude",
+              "value": "={{ $json[0] ? $json[0].lon : '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [1000, 100]
+    },
+    {
+      "parameters": {
+        "amount": 1000,
+        "unit": "milliseconds"
+      },
+      "id": "7",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1200, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allResults = $items('Format Result').map(i => i.json);\\n\\nlet sumLat = 0;\\nlet sumLon = 0;\\nlet validCount = 0;\\nlet markers = '';\\n\\nfor (const res of allResults) {\\n  if (res.Latitude && res.Longitude) {\\n    const lat = parseFloat(res.Latitude);\\n    const lon = parseFloat(res.Longitude);\\n    sumLat += lat;\\n    sumLon += lon;\\n    validCount++;\\n    const name = (res.University || 'Unknown').replace(/'/g, \"\\\\'\");\\n    markers += `L.circleMarker([${lat}, ${lon}], {radius: 5, color: 'red'}).addTo(map).bindTooltip('${name}');\\\\n`;\\n  }\\n}\\n\\nconst meanLat = validCount > 0 ? (sumLat / validCount) : 20.5937;\\nconst meanLon = validCount > 0 ? (sumLon / validCount) : 78.9629;\\n\\nconst html =  `\\\\<!DOCTYPE html>\\\\n<html>\\\\n<head>\\\\n  <title>Universities Map</title>\\\\n  <meta charset=\\\"utf-8\\\" />\\\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\\\n  <link rel=\\\"stylesheet\\\" href=\\\"https://www.google.com/search?q=https://unpkg.com/leaflet%401.9.4/dist/leaflet.css\\\" />\\\\n  <script src=\\\"https://www.google.com/search?q=https://unpkg.com/leaflet%401.9.4/dist/leaflet.js\\\"></script>\\\\n  <style>\\\\n    #map { height: 100vh; width: 100vw; margin: 0; padding: 0; }\\\\n    body { margin: 0; }\\\\n  </style>\\\\n</head>\\\\n<body>\\\\n  <div id=\\\"map\\\"></div>\\\\n  <script>\\\\n    var map = L.map('map').setView([${meanLat}, ${meanLon}], 5);\\\\n    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {\\\\n      maxZoom: 19,\\\\n      attribution: '© OpenStreetMap'\\\\n    }).addTo(map);\\\\n\\\\n    ${markers}\\\\n  </script>\\\\n</body>\\\\n</html>`;\\n\\nreturn [{\\n  json: { universities: validCount },\\n  binary: {\\n    data: {\\n      data: Buffer.from(html).toString('base64'),\\n      mimeType: 'text/html',\\n      fileName: 'universities_map.html'\\n    }\\n  }\\n}];"
+      },
+      "id": "8",
+      "name": "Generate Map HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 400]
+    },
+    {
+      "parameters": {
+        "fileName": "/data/universities_map.html",
+        "dataPropertyName": "data"
+      },
+      "id": "9",
+      "name": "Write Binary File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Read Excel", "type": "main", "index": 0 }]]
+    },
+    "Read Excel": {
+      "main": [[{ "node": "Extract Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Data": {
+      "main": [[{ "node": "Loop", "type": "main", "index": 0 }]]
+    },
+    "Loop": {
+      "main": [
+        [{ "node": "Nominatim API", "type": "main", "index": 0 }],
+        [{ "node": "Generate Map HTML", "type": "main", "index": 0 }]
+      ]
+    },
+    "Nominatim API": {
+      "main": [[{ "node": "Format Result", "type": "main", "index": 0 }]]
+    },
+    "Format Result": {
+      "main": [[{ "node": "Wait", "type": "main", "index": 0 }]]
+    },
+    "Wait": {
+      "main": [[{ "node": "Loop", "type": "main", "index": 0 }]]
+    },
+    "Generate Map HTML": {
+      "main": [[{ "node": "Write Binary File", "type": "main", "index": 0 }]]
+    }
+  }
+}
